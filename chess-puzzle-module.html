@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chess Puzzle Module</title>
+    
+    <!-- Chess Libraries -->
+    <link rel="stylesheet" href="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.css">
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+    
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        
+        #chess-puzzle-module {
+            max-width: 600px;
+            margin: 40px auto;
+            padding: 20px;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+        }
+        
+        #puzzle-header {
+            text-align: center;
+            margin-bottom: 20px;
+            color: white;
+        }
+        
+        #puzzle-header h2 {
+            font-size: 28px;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+        
+        #difficulty-controls {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        
+        .difficulty-btn {
+            padding: 10px 20px;
+            border: 2px solid white;
+            background: rgba(255,255,255,0.2);
+            color: white;
+            font-weight: bold;
+            cursor: pointer;
+            border-radius: 25px;
+            transition: all 0.3s ease;
+            font-size: 14px;
+        }
+        
+        .difficulty-btn:hover {
+            background: rgba(255,255,255,0.3);
+            transform: translateY(-2px);
+        }
+        
+        .difficulty-btn.active {
+            background: white;
+            color: #667eea;
+            box-shadow: 0 4px 15px rgba(255,255,255,0.4);
+        }
+        
+        #puzzle-info {
+            text-align: center;
+            margin-bottom: 15px;
+            color: white;
+            font-size: 16px;
+        }
+        
+        #board-container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.2);
+        }
+        
+        #myBoard {
+            margin: 0 auto;
+        }
+        
+        #status-message {
+            text-align: center;
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 8px;
+            font-weight: bold;
+            font-size: 18px;
+            min-height: 50px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        #status-message.success {
+            background: #10b981;
+            color: white;
+        }
+        
+        #status-message.error {
+            background: #ef4444;
+            color: white;
+        }
+        
+        #status-message.info {
+            background: rgba(255,255,255,0.2);
+            color: white;
+        }
+        
+        #action-buttons {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin-top: 15px;
+        }
+        
+        .action-btn {
+            padding: 12px 24px;
+            border: none;
+            background: white;
+            color: #667eea;
+            font-weight: bold;
+            cursor: pointer;
+            border-radius: 25px;
+            transition: all 0.3s ease;
+            font-size: 14px;
+        }
+        
+        .action-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(255,255,255,0.4);
+        }
+        
+        .action-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        #loading {
+            text-align: center;
+            color: white;
+            font-size: 18px;
+            padding: 20px;
+        }
+    </style>
+</head>
+<body>
+
+<!-- STANDALONE CHESS PUZZLE MODULE - DROP THIS ANYWHERE -->
+<div id="chess-puzzle-module">
+    <div id="puzzle-header">
+        <h2>♟️ Chess Puzzle Challenge</h2>
+        <div id="difficulty-controls">
+            <button class="difficulty-btn" data-difficulty="easy">Easy</button>
+            <button class="difficulty-btn active" data-difficulty="medium">Medium</button>
+            <button class="difficulty-btn" data-difficulty="hard">Hard</button>
+        </div>
+        <div id="puzzle-info">
+            <span id="puzzle-rating">Rating: ---</span> | 
+            <span id="puzzle-themes">Loading puzzle...</span>
+        </div>
+    </div>
+    
+    <div id="board-container">
+        <div id="myBoard"></div>
+    </div>
+    
+    <div id="status-message" class="info">
+        Make the best move for <span id="turn-indicator">White</span>
+    </div>
+    
+    <div id="action-buttons">
+        <button class="action-btn" id="hint-btn">💡 Hint</button>
+        <button class="action-btn" id="reset-btn">🔄 Reset</button>
+        <button class="action-btn" id="new-puzzle-btn">⏭️ New Puzzle</button>
+    </div>
+</div>
+
+<script>
+// Chess Puzzle Module - Full Implementation
+(function() {
+    'use strict';
+    
+    // Configuration
+    const DIFFICULTY_RANGES = {
+        easy: { min: 600, max: 1200 },
+        medium: { min: 1200, max: 1800 },
+        hard: { min: 1800, max: 2500 }
+    };
+    
+    // State
+    let board = null;
+    let game = null;
+    let currentPuzzle = null;
+    let currentDifficulty = 'medium';
+    let solutionMoves = [];
+    let currentMoveIndex = 0;
+    let playerColor = 'white';
+    
+    // DOM Elements
+    const statusEl = document.getElementById('status-message');
+    const ratingEl = document.getElementById('puzzle-rating');
+    const themesEl = document.getElementById('puzzle-themes');
+    const turnEl = document.getElementById('turn-indicator');
+    const hintBtn = document.getElementById('hint-btn');
+    const resetBtn = document.getElementById('reset-btn');
+    const newPuzzleBtn = document.getElementById('new-puzzle-btn');
+    const difficultyBtns = document.querySelectorAll('.difficulty-btn');
+    
+    // Initialize
+    function init() {
+        initializeBoard();
+        attachEventListeners();
+        loadNewPuzzle();
+    }
+    
+    // Initialize chessboard
+    function initializeBoard() {
+        const config = {
+            draggable: true,
+            position: 'start',
+            onDragStart: onDragStart,
+            onDrop: onDrop,
+            onSnapEnd: onSnapEnd
+        };
+        board = Chessboard('myBoard', config);
+        game = new Chess();
+        
+        // Responsive board sizing
+        window.addEventListener('resize', board.resize);
+    }
+    
+    // Event listeners
+    function attachEventListeners() {
+        difficultyBtns.forEach(btn => {
+            btn.addEventListener('click', function() {
+                difficultyBtns.forEach(b => b.classList.remove('active'));
+                this.classList.add('active');
+                currentDifficulty = this.dataset.difficulty;
+                loadNewPuzzle();
+            });
+        });
+        
+        hintBtn.addEventListener('click', showHint);
+        resetBtn.addEventListener('click', resetPuzzle);
+        newPuzzleBtn.addEventListener('click', loadNewPuzzle);
+    }
+    
+    // Fetch puzzle from Lichess API
+    async function loadNewPuzzle() {
+        try {
+            updateStatus('Loading puzzle...', 'info');
+            disableButtons(true);
+            
+            const range = DIFFICULTY_RANGES[currentDifficulty];
+            const response = await fetch('https://lichess.org/api/puzzle/daily');
+            
+            if (!response.ok) throw new Error('Failed to fetch puzzle');
+            
+            const data = await response.json();
+            currentPuzzle = data.puzzle || data;
+            
+            // Extract puzzle data
+            const fen = currentPuzzle.fen || currentPuzzle.initialPly;
+            solutionMoves = currentPuzzle.solution || [];
+            currentMoveIndex = 0;
+            
+            // Setup game
+            game.load(fen);
+            board.position(fen);
+            
+            // Determine player color (opposite of first solution move)
+            const firstMove = solutionMoves[0];
+            playerColor = game.turn() === 'w' ? 'white' : 'black';
+            
+            // If it's the computer's turn, make the first move
+            if (game.turn() !== (playerColor === 'white' ? 'w' : 'b')) {
+                setTimeout(() => makeComputerMove(), 500);
+            } else {
+                updateTurnIndicator();
+            }
+            
+            // Update UI
+            const rating = currentPuzzle.rating || range.min + Math.floor(Math.random() * (range.max - range.min));
+            ratingEl.textContent = `Rating: ${rating}`;
+            
+            const themes = currentPuzzle.themes || ['Tactical'];
+            themesEl.textContent = Array.isArray(themes) ? themes.join(', ') : themes;
+            
+            updateStatus(`Find the best move for ${playerColor === 'white' ? 'White' : 'Black'}!`, 'info');
+            disableButtons(false);
+            
+        } catch (error) {
+            console.error('Error loading puzzle:', error);
+            updateStatus('Failed to load puzzle. Using offline example.', 'error');
+            loadFallbackPuzzle();
+        }
+    }
+    
+    // Fallback puzzle if API fails
+    function loadFallbackPuzzle() {
+        const fallbackPuzzles = {
+            easy: {
+                fen: 'r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR w KQkq - 4 4',
+                solution: ['h5f7'], // Scholar's mate setup
+                rating: 800
+            },
+            medium: {
+                fen: 'r1bqkbnr/pppp1ppp/2n5/4p3/2B1P3/5Q2/PPPP1PPP/RNB1K1NR w KQkq - 4 4',
+                solution: ['f3f7'], // Fork attack
+                rating: 1400
+            },
+            hard: {
+                fen: 'r1bqk2r/ppp2ppp/2n5/2bpp3/2B1P3/2NP4/PPP2PPP/R1BQK2R w KQkq - 0 7',
+                solution: ['d1h5', 'g7g6', 'h5c5'], // Complex combination
+                rating: 2000
+            }
+        };
+        
+        const puzzle = fallbackPuzzles[currentDifficulty];
+        game.load(puzzle.fen);
+        board.position(puzzle.fen);
+        solutionMoves = puzzle.solution;
+        currentMoveIndex = 0;
+        playerColor = 'white';
+        
+        ratingEl.textContent = `Rating: ${puzzle.rating}`;
+        themesEl.textContent = 'Offline Puzzle';
+        updateStatus('Find the best move for White!', 'info');
+        disableButtons(false);
+    }
+    
+    // Make computer's move
+    function makeComputerMove() {
+        if (currentMoveIndex >= solutionMoves.length) return;
+        
+        const move = solutionMoves[currentMoveIndex];
+        const moveObj = game.move({
+            from: move.substring(0, 2),
+            to: move.substring(2, 4),
+            promotion: move.length > 4 ? move[4] : undefined
+        });
+        
+        if (moveObj) {
+            board.position(game.fen());
+            currentMoveIndex++;
+            updateTurnIndicator();
+            
+            if (currentMoveIndex >= solutionMoves.length) {
+                updateStatus('🎉 Puzzle Solved! Great job!', 'success');
+                disableButtons(true);
+                newPuzzleBtn.disabled = false;
+            }
+        }
+    }
+    
+    // Drag start handler
+    function onDragStart(source, piece, position, orientation) {
+        // Don't allow moves if game is over
+        if (game.game_over()) return false;
+        
+        // Only allow player to move their own pieces
+        if ((playerColor === 'white' && piece.search(/^b/) !== -1) ||
+            (playerColor === 'black' && piece.search(/^w/) !== -1)) {
+            return false;
+        }
+        
+        return true;
+    }
+    
+    // Drop handler
+    function onDrop(source, target) {
+        // Check if this is the expected move
+        if (currentMoveIndex >= solutionMoves.length) {
+            return 'snapback';
+        }
+        
+        const expectedMove = solutionMoves[currentMoveIndex];
+        const expectedFrom = expectedMove.substring(0, 2);
+        const expectedTo = expectedMove.substring(2, 4);
+        
+        // Try to make the move
+        const move = game.move({
+            from: source,
+            to: target,
+            promotion: 'q' // Always promote to queen for simplicity
+        });
+        
+        // Check if move is valid
+        if (move === null) {
+            updateStatus('❌ Invalid move! Try again.', 'error');
+            return 'snapback';
+        }
+        
+        // Check if it's the correct move
+        if (source === expectedFrom && target === expectedTo) {
+            currentMoveIndex++;
+            updateStatus('✅ Correct move!', 'success');
+            
+            // If there are more moves, make computer's response
+            if (currentMoveIndex < solutionMoves.length) {
+                setTimeout(() => {
+                    makeComputerMove();
+                    if (currentMoveIndex < solutionMoves.length) {
+                        updateStatus(`Find the next move for ${playerColor === 'white' ? 'White' : 'Black'}!`, 'info');
+                    }
+                }, 600);
+            } else {
+                updateStatus('🎉 Puzzle Solved! Excellent work!', 'success');
+                disableButtons(true);
+                newPuzzleBtn.disabled = false;
+            }
+        } else {
+            // Wrong move, but legal - undo it
+            game.undo();
+            updateStatus('❌ Wrong move! Try again.', 'error');
+            return 'snapback';
+        }
+    }
+    
+    // Snap end handler
+    function onSnapEnd() {
+        board.position(game.fen());
+    }
+    
+    // Show hint
+    function showHint() {
+        if (currentMoveIndex >= solutionMoves.length) return;
+        
+        const nextMove = solutionMoves[currentMoveIndex];
+        const from = nextMove.substring(0, 2);
+        const to = nextMove.substring(2, 4);
+        
+        let hint = '';
+        if (currentDifficulty === 'easy') {
+            hint = `💡 Move the piece from ${from.toUpperCase()} to ${to.toUpperCase()}`;
+        } else if (currentDifficulty === 'medium') {
+            hint = `💡 Look at square ${from.toUpperCase()}`;
+        } else {
+            const piece = game.get(from);
+            hint = `💡 Consider your ${piece ? piece.type : 'piece'}'s attacking possibilities`;
+        }
+        
+        updateStatus(hint, 'info');
+        setTimeout(() => {
+            updateStatus(`Find the best move for ${playerColor === 'white' ? 'White' : 'Black'}!`, 'info');
+        }, 3000);
+    }
+    
+    // Reset puzzle
+    function resetPuzzle() {
+        if (!currentPuzzle) return;
+        
+        const fen = currentPuzzle.fen || currentPuzzle.initialPly;
+        game.load(fen);
+        board.position(fen);
+        currentMoveIndex = 0;
+        
+        updateStatus(`Find the best move for ${playerColor === 'white' ? 'White' : 'Black'}!`, 'info');
+        disableButtons(false);
+    }
+    
+    // Update status message
+    function updateStatus(message, type) {
+        statusEl.textContent = message;
+        statusEl.className = type;
+    }
+    
+    // Update turn indicator
+    function updateTurnIndicator() {
+        const color = game.turn() === 'w' ? 'White' : 'Black';
+        turnEl.textContent = color;
+    }
+    
+    // Disable/enable buttons
+    function disableButtons(disabled) {
+        hintBtn.disabled = disabled;
+        resetBtn.disabled = disabled;
+        newPuzzleBtn.disabled = disabled;
+    }
+    
+    // Initialize on load
+    init();
+})();
+</script>
+
+</body>
+</html>
